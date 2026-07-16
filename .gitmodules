@@ -1,0 +1,3 @@
+[submodule "drvAsynSPI"]
+	path = drvAsynSPI
+	url = git@github.com:kek-acc/drvAsynSPI.git

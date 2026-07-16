@@ -56,7 +56,7 @@ public:
 
 private:
   ihm02a1Controller *pC_;  /**< Pointer to the asynMotorController to which this axis belongs.
-  *   Abbreviated because it is used very frequently */
+                            *   Abbreviated because it is used very frequently */
   asynStatus setParameter(uint8_t param, int32_t value);
   asynStatus servoPower(bool power);
 
