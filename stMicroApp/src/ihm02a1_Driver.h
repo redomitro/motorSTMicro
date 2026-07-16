@@ -58,8 +58,7 @@ private:
   ihm02a1Controller *pC_;  /**< Pointer to the asynMotorController to which this axis belongs.
                             *   Abbreviated because it is used very frequently */
   asynStatus setParameter(uint8_t param, int32_t value);
-  asynStatus servoPower(bool power);
-
+  asynStatus getParameter(uint8_t param, int32_t* value);
   friend class ihm02a1Controller;
 };
 
@@ -70,11 +69,9 @@ public:
   void report(FILE *fp, int level);
   ihm02a1Axis* getAxis(asynUser *pasynUser);
   ihm02a1Axis* getAxis(int axisNozz);
-  asynStatus writeReadController(const char *output, char *input, size_t maxChars, size_t *nread, double timeout);
+  asynStatus poll();
 
 private:
-  uint8_t syncCounter;
-  asynStatus writeReadFrame(uint8_t length, uint8_t frameType, uint8_t *payload);
-
+  asynStatus ihm02a1Controller::writeReadFrame(uint8_t* rx, uint8_t* tx, uint8_t len, uint8_t mask);
   friend class ihm02a1Axis;
 };
