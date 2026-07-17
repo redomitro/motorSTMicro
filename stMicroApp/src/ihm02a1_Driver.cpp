@@ -14,7 +14,8 @@
 
 #define NINT(f) (int)((f)>0 ? (f)+0.5 : (f)-0.5)
 
-int32_t revEndian(int32_t x){
+int32_t revEndian(int32_t x)
+{
 	int32_t y=0;
 	for(int i = 0; i < 4; i++){
 		y <<= 8; //shift LSB over one; shifts zeroes on first run
@@ -24,8 +25,8 @@ int32_t revEndian(int32_t x){
 	return y;
 }
 
-int32_t packInt(int32_t x, uint8_t regLength, bool isSigned){
-
+int32_t packInt(int32_t x, uint8_t regLength, bool isSigned)
+{
   uint8_t sign = x >> 31; //true for negative numbers
   if(sign && !isSigned){
     print("Sign error\n");
@@ -41,8 +42,8 @@ int32_t packInt(int32_t x, uint8_t regLength, bool isSigned){
 	return arg;
 }
 
-int32_t unpackInt(int32_t resp, uint8_t regLength, bool isSigned){
-
+int32_t unpackInt(int32_t resp, uint8_t regLength, bool isSigned)
+{
   int32_t x = revEndian(resp);
   x >>= 8*(3-(regLength-1)/8));
   uint8_t sign;
@@ -135,9 +136,8 @@ ihm02a1Axis* ihm02a1Controller::getAxis(int axisNo)
   return static_cast<ihm02a1Axis*>(asynMotorController::getAxis(axisNo));
 }
 
-
-asynStatus ihm02a1Controller::writeReadFrame(uint8_t* input, uint8_t* output, uint8_t len, uint8_t mask)
-{
+asynStatus ihm02a1Controller::writeReadFrame(uint8_t* message, uint8_t len, uint8_t mask)
+{ //this needs to be converted to use inString and outString
   asynStatus status;
   uint8_t rx[32] = {0};
   uint8_t tx[32] = {0};
@@ -148,13 +148,13 @@ asynStatus ihm02a1Controller::writeReadFrame(uint8_t* input, uint8_t* output, ui
   
   for(uint8_t i = 0; i < numAxes_; i++){
 
-  //order of devices; remember device directly connected to host MOSI
-  //is last in chain and corresponds to mask msb. I love SPI too
+  /** Order of devices; remember device directly connected to host MOSI
+   *  is last in data chain and corresponds to mask msb. I love SPI too */
 
     if((mask >> i) & 1){ //extract corresponding mask bit with bitwise ops
 
       for(uint8_t j = 0; j < len; j++){
-        memcpy(tx+i+j*numAxes_, output+j, 1);
+        memcpy(tx+i+j*numAxes_, message+j, 1);
 
         /* if 4 devices connected:
         device 0 will read from bits 0, 4, 8, 12 etc
@@ -174,13 +174,64 @@ asynStatus ihm02a1Controller::writeReadFrame(uint8_t* input, uint8_t* output, ui
   // Repeated calls to pasynOctetSyncIO which will hopefully propagate through SPI as desired.
   }
 
-  //deinterlace the received data
-
-  for(uint8_t i = 0; i < numAxes_; i++){
+  for(uint8_t i = 0; i < numAxes_; i++){  //deinterlace the received data
     for (uint8_t j = 0; j < len; j++){
       memcpy(input+j+i*len, rx+j*len+i, 1); //basically transposing a matrix here
     }
   }
 
   return status;
+}
+
+asynStatus ihm02a1Controller:poll()
+{
+  //todo - Controller poll is called once before every axis poll, and we can poll every axis in one SPI transaction per parameter (0xff bit mask)
+  asynStatus status;
+  return status;
+}
+
+// These are the ihm02a1Axis methods
+
+asynStatus ihm02a1Ais::poll(bool* moving)
+{
+// todo - Copy relevant information from controller poll
+  asynStatus status;
+  return status;
+}
+
+/** Creates a new ihm02a1Axis object.
+  * \param[in] pC Pointer to the ihm02a1Controller to which this axis belongs.
+  * \param[in] axisNo Index number of this axis, range 0 to pC->numAxes_-1.
+  *
+  * Initializes register numbers, etc.
+  */
+
+ihm02a1Axis::ihm02a1Axis(ihm02a1Controller *pC, int axisNo)
+  : asynMotorAxis(pC, axisNo),
+    pC_(pC)
+{
+}
+
+/** Reports on status of the axis
+  * \param[in] fp The file pointer on which report information will be written
+  * \param[in] level The level of report detail desired
+  *
+  * After printing device-specific information calls asynMotorAxis::report()
+  */
+
+void ihm02a1Axis::report(FILE *fp, int level)
+{
+  if (level > 0) {
+    fprintf(fp, "  axis %d\n",
+            axisNo_);
+  }
+
+asynStatus ihm02a1Axis::move(double position, int relative, double min_velocity, double max_velocity, double acceleration)
+{
+  //position needs to be converted to int32 microsteps
+
+  int32_t pos32 = NINT(position);
+  
+  //velocity needs to be converted to microsteps/tick
+  //accel needs to be converted to microsteps/tick^2
 }

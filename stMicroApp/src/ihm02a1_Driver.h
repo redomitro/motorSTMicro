@@ -52,7 +52,6 @@ public:
   asynStatus stop(double acceleration);
   asynStatus poll(bool *moving);
   //  asynStatus setPosition(double position);
-  //  asynStatus setClosedLoop(bool closedLoop);
 
 private:
   ihm02a1Controller *pC_;  /**< Pointer to the asynMotorController to which this axis belongs.
@@ -72,6 +71,6 @@ public:
   asynStatus poll();
 
 private:
-  asynStatus ihm02a1Controller::writeReadFrame(uint8_t* rx, uint8_t* tx, uint8_t len, uint8_t mask);
+  asynStatus ihm02a1Controller::writeReadFrame(uint8_t* input, uint8_t* output, uint8_t len, uint8_t mask);
   friend class ihm02a1Axis;
 };
