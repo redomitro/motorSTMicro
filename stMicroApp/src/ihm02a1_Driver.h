@@ -31,6 +31,9 @@
 //define commands
 #define NOP           0x00
 #define GET_PARAM     0x20
+#define TWEAK         0x40
+#define JOG           0x50
+#define MOVE          0x60
 #define GO_HOME       0x70
 #define GO_MARK       0x78
 #define SOFT_HIZ      0xa0
@@ -41,7 +44,7 @@
 #define RESET_POS     0xd8
 #define GET_STATUS    0xd0
 
-class epicsShareClass ihm02a1Axis : public asynMotorAxis{
+class epicsShareClass ihm02a1Axis : public asynMotorAxis {
 public:
   /* These are the methods we override from the base class */
   ihm02a1Axis(class ihm02a1Controller *pC, int axis);
@@ -56,8 +59,12 @@ public:
 private:
   ihm02a1Controller *pC_;  /**< Pointer to the asynMotorController to which this axis belongs.
                             *   Abbreviated because it is used very frequently */
-  asynStatus setParameter(uint8_t param, int32_t value);
-  asynStatus getParameter(uint8_t param, int32_t* value);
+  double paramAcc;
+  double paramMinSpeed;
+  double paramMaxSpeed;
+  asynStatus setParameter(uint8_t param, uint8_t regLength, int32_t value);
+  asynStatus getParameter(uint8_t param, uint8_t regLength, int32_t* value);
+  asynStatus getStatus();
   friend class ihm02a1Controller;
 };
 

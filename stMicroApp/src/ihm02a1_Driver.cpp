@@ -13,6 +13,11 @@
 #include "ihm02a1_Driver.h"
 
 #define NINT(f) (int)((f)>0 ? (f)+0.5 : (f)-0.5)
+#define tick 0.00000025 //a tick is 250 nanoseconds
+
+int32_t min(int x, int y){
+  return (x <= y) ? x : y;
+}
 
 int32_t revEndian(int32_t x)
 {
@@ -136,8 +141,8 @@ ihm02a1Axis* ihm02a1Controller::getAxis(int axisNo)
   return static_cast<ihm02a1Axis*>(asynMotorController::getAxis(axisNo));
 }
 
-asynStatus ihm02a1Controller::writeReadFrame(uint8_t* message, uint8_t len, uint8_t mask)
-{ //this needs to be converted to use inString and outString
+asynStatus ihm02a1Controller::writeReadFrame(uint8_t* input, uint8_t* output, uint8_t len, uint8_t mask)
+{
   asynStatus status;
   uint8_t rx[32] = {0};
   uint8_t tx[32] = {0};
@@ -154,7 +159,7 @@ asynStatus ihm02a1Controller::writeReadFrame(uint8_t* message, uint8_t len, uint
     if((mask >> i) & 1){ //extract corresponding mask bit with bitwise ops
 
       for(uint8_t j = 0; j < len; j++){
-        memcpy(tx+i+j*numAxes_, message+j, 1);
+        memcpy(tx+i+j*numAxes_, output+j, 1);
 
         /* if 4 devices connected:
         device 0 will read from bits 0, 4, 8, 12 etc
@@ -167,8 +172,8 @@ asynStatus ihm02a1Controller::writeReadFrame(uint8_t* message, uint8_t len, uint
   //do the data transfer
 
   for(int i = 0; i < len; i++){
-    status = pasynOctetSyncIO->writeRead(pasynUserController_, rx+i*numAxes_,
-                                         numAxes_, tx+i*numAxes_, sizeof(rx),
+    status = pasynOctetSyncIO->writeRead(pasynUserController_, tx+i*numAxes_,
+                                         numAxes_, rx+i*numAxes_, sizeof(rx),
                                          DEFAULT_CONTROLLER_TIMEOUT, &nwrite, &nread, &eomReason);
 
   // Repeated calls to pasynOctetSyncIO which will hopefully propagate through SPI as desired.
@@ -185,17 +190,46 @@ asynStatus ihm02a1Controller::writeReadFrame(uint8_t* message, uint8_t len, uint
 
 asynStatus ihm02a1Controller:poll()
 {
-  //todo - Controller poll is called once before every axis poll, and we can poll every axis in one SPI transaction per parameter (0xff bit mask)
+  //Controller poll is called once before every axis poll, and we can poll all axes in one SPI transaction per parameter (0xff bit mask)
   asynStatus status;
+  uint8_t statusPoll[] = {GET_STATUS, NOP, NOP}
+  uint8_t positionPoll[] = {GET_PARAM+ABS_POS, NOP, NOP, NOP};
+
+  status = writeReadFrame(inString_, statusPoll, 3, 255); //setting mask to 255 means we poll all axes
+  //inString_ now has numAxes_ copies of (NOP, status MSB, status LSB) in it; max is 24 bytes
+
+  status = writeReadFrame(inString_+24, positionPoll, 4, 255);
+  //positions of all axes in bytes 24-55
+
   return status;
 }
 
 // These are the ihm02a1Axis methods
 
-asynStatus ihm02a1Ais::poll(bool* moving)
-{
-// todo - Copy relevant information from controller poll
+asynStatus ihm02a1Axis::poll(bool* moving)
+{ //copy information in from full-controller poll
+
   asynStatus status;
+  uint8_t buffer[8] = {0};
+  memcpy(buffer,   &pC->inString_+3*axisNo_,    3);       //copy this axis' status to buffer
+  memcpy(buffer+3, &pC->inString_+24+4*axisNo_, 4);       //copy this axis' position to buffer
+
+  int32_t axisStatusRaw = 0;
+  memcpy(&axisStatusRaw, buffer+1, 2);                    //discard the NOP byte
+  int32_t axisStatus = unpackInt(axisStatusRaw, 16, 0);
+
+  int32_t motorStatus = (axisStatus >> 5) & 3;            //extract status bits
+  int32_t done = motorStatus ? false : true;              //motor is stopped if status bits are 00
+  *moving = done ? false : true;
+
+  setIntegerParam(pC_->motorStatusDone_, done);
+
+  int32_t positionRaw = 0;
+  memcpy(&positionRaw, buffer+4, 3);
+  int32_t position = unpackInt(positionRaw, 22, 1);       //convert to position as int32
+
+  setDoubleParam(pC_->motorPosition_, (double)position);  //write to motor record
+
   return status;
 }
 
@@ -228,10 +262,63 @@ void ihm02a1Axis::report(FILE *fp, int level)
 
 asynStatus ihm02a1Axis::move(double position, int relative, double min_velocity, double max_velocity, double acceleration)
 {
-  //position needs to be converted to int32 microsteps
+  //position needs to be converted to int32 microsteps; motor record reports in float64 microsteps
+  asynStatus status;
+  uint8_t buffer[4] = {0};
 
   int32_t pos32 = NINT(position);
-  
+  int32_t arg = packInt(pos32, 22, 1);
+
   //velocity needs to be converted to microsteps/tick
   //accel needs to be converted to microsteps/tick^2
+
+  //build outstring
+  if(relative){
+    memset(buffer, TWEAK, 1);
+  } else {
+    memset(buffer, MOVE, 1);
+  }
+  memcpy(buffer+1, arg, 3);
+
+  status = pC_->writeReadFrame(&pC_->inString_, buffer, 4, 1 << axisNo_);
+  return status;
+}
+
+
+asynStatus moveVelocity(double min_velocity, double max_velocity, double acceleration)
+{
+  asynStatus status;
+  uint8_t buffer[4] = {0};
+
+  int32_t vel32 = min(NINT(fabs(max_velocity)*tick*(1 << 28)), (1 << 20) - 1); //truncate speed if user tries to go too fast
+  int32_t arg = packInt(vel32, 20, 0);
+
+  uint8_t cmd = (max_velocity > 0) ? JOG+1 : JOG;
+  memcpy(buffer, &cmd, 1);
+  memcpy(buffer+1, arg, 3);
+
+  status = pC_->writeReadFrame(&pC_->inString_, buffer, 4, 1 << axisNo_);
+  return status;
+}
+
+asynStatus stop(double acceleration)
+{
+  asynStatus status;
+
+  //todo custom accel
+
+  uint8_t cmd = SOFT_STOP;
+  status = pC_->writeReadFrame(&pC_->inString_, &cmd, 1, 1 << axisNo_);
+  return status;
+}
+
+asynStatus home(double min_velocity, double max_velocity, double acceleration, int forwards)
+{
+  asynStatus status;
+
+  //todo custom speeds
+
+  uint8_t cmd = GO_HOME;
+  status = pC_->writeReadFrame(&pC_->inString_, &cmd, 1, 1 << axisNo_);
+  return status;
 }
