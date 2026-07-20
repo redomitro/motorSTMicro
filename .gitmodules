@@ -1,3 +1,3 @@
 [submodule "drvAsynSPI"]
 	path = drvAsynSPI
-	url = git@github.com:redomitro/drvAsynSPI.git
+	url = https://github.com/redomitro/drvAsynSPI.git
