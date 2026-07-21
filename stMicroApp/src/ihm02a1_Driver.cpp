@@ -12,6 +12,7 @@
 #include <epicsExport.h>
 #include "ihm02a1_Driver.h"
 
+#define NUM_IHM02A1_PARAMS 0
 #define NINT(f) (int)((f)>0 ? (f)+0.5 : (f)-0.5)
 #define tick 0.00000025 //a tick is 250 nanoseconds
 
@@ -34,7 +35,7 @@ int32_t packInt(int32_t x, uint8_t regLength, bool isSigned)
 {
   uint8_t sign = x >> 31; //true for negative numbers
   if(sign && !isSigned){
-    print("Sign error\n");
+    printf("Sign error\n");
     return 0;
   }
 
@@ -42,7 +43,7 @@ int32_t packInt(int32_t x, uint8_t regLength, bool isSigned)
   if(isSigned){
     x |= sign << regLength - 1;
   }
-	x <<= 8*(3-(regLength-1)/8)); //rounds up to 24 (1-byte arg), 16, 8 or 0 (4-byte arg)
+	x <<= 8*(3-(regLength-1)/8); //rounds up to 24 (1-byte arg), 16, 8 or 0 (4-byte arg)
 	int32_t arg = revEndian(x);
 	return arg;
 }
@@ -50,7 +51,7 @@ int32_t packInt(int32_t x, uint8_t regLength, bool isSigned)
 int32_t unpackInt(int32_t resp, uint8_t regLength, bool isSigned)
 {
   int32_t x = revEndian(resp);
-  x >>= 8*(3-(regLength-1)/8));
+  x >>= 8*(3-(regLength-1)/8);
   uint8_t sign;
   if(isSigned){
     sign = x >> regLength - 1;
@@ -61,7 +62,7 @@ int32_t unpackInt(int32_t resp, uint8_t regLength, bool isSigned)
 
 ihm02a1Controller::ihm02a1Controller(const char *portName, const char *ihm02a1PortName, int numAxes, 
                                  double movingPollPeriod, double idlePollPeriod)
-  :  asynMotorController(portName, numAxes, NUM_ihm02a1_PARAMS,
+  :  asynMotorController(portName, numAxes, NUM_IHM02A1_PARAMS,
                          0, // No additional interfaces beyond those in base class
                          0, // No additional callback interfaces beyond those in base class
                          ASYN_CANBLOCK | ASYN_MULTIDEVICE,
@@ -141,11 +142,11 @@ ihm02a1Axis* ihm02a1Controller::getAxis(int axisNo)
   return static_cast<ihm02a1Axis*>(asynMotorController::getAxis(axisNo));
 }
 
-asynStatus ihm02a1Controller::writeReadFrame(uint8_t* input, uint8_t* output, uint8_t len, uint8_t mask)
+asynStatus ihm02a1Controller::writeReadFrame(char* input, char* output, uint8_t len, uint8_t mask)
 {
   asynStatus status;
-  uint8_t rx[32] = {0};
-  uint8_t tx[32] = {0};
+  char rx[32] = {0};
+  char tx[32] = {0};
   size_t nwrite, nread;
   int eomReason;
 
@@ -172,8 +173,8 @@ asynStatus ihm02a1Controller::writeReadFrame(uint8_t* input, uint8_t* output, ui
   //do the data transfer
 
   for(int i = 0; i < len; i++){
-    status = pasynOctetSyncIO->writeRead(pasynUserController_, tx+i*numAxes_,
-                                         numAxes_, rx+i*numAxes_, sizeof(rx),
+    status = pasynOctetSyncIO->writeRead(pasynUserController_, (char*)tx+i*numAxes_,
+                                         numAxes_, (char*)rx+i*numAxes_, sizeof(rx),
                                          DEFAULT_CONTROLLER_TIMEOUT, &nwrite, &nread, &eomReason);
 
   // Repeated calls to pasynOctetSyncIO which will hopefully propagate through SPI as desired.
@@ -188,17 +189,21 @@ asynStatus ihm02a1Controller::writeReadFrame(uint8_t* input, uint8_t* output, ui
   return status;
 }
 
-asynStatus ihm02a1Controller:poll()
+asynStatus ihm02a1Controller::poll()
 {
   //Controller poll is called once before every axis poll, and we can poll all axes in one SPI transaction per parameter (0xff bit mask)
   asynStatus status;
-  uint8_t statusPoll[] = {GET_STATUS, NOP, NOP}
+  uint8_t statusPoll[] = {GET_STATUS, NOP, NOP};
   uint8_t positionPoll[] = {GET_PARAM+ABS_POS, NOP, NOP, NOP};
 
-  status = writeReadFrame(inString_, statusPoll, 3, 255); //setting mask to 255 means we poll all axes
+  char buffer[8];
+  memcpy(buffer, statusPoll, 3);
+  memcpy(buffer+3, positionPoll, 4);
+
+  status = writeReadFrame(inString_, buffer, 3, 255); //setting mask to 255 means we poll all axes
   //inString_ now has numAxes_ copies of (NOP, status MSB, status LSB) in it; max is 24 bytes
 
-  status = writeReadFrame(inString_+24, positionPoll, 4, 255);
+  status = writeReadFrame(inString_+24, buffer+3, 4, 255);
   //positions of all axes in bytes 24-55
 
   return status;
@@ -211,8 +216,8 @@ asynStatus ihm02a1Axis::poll(bool* moving)
 
   asynStatus status;
   uint8_t buffer[8] = {0};
-  memcpy(buffer,   &pC->inString_+3*axisNo_,    3);       //copy this axis' status to buffer
-  memcpy(buffer+3, &pC->inString_+24+4*axisNo_, 4);       //copy this axis' position to buffer
+  memcpy(buffer,   pC_->inString_+3*axisNo_,    3);       //copy this axis' status to buffer
+  memcpy(buffer+3, pC_->inString_+24+4*axisNo_, 4);       //copy this axis' position to buffer
 
   int32_t axisStatusRaw = 0;
   memcpy(&axisStatusRaw, buffer+1, 2);                    //discard the NOP byte
@@ -230,6 +235,7 @@ asynStatus ihm02a1Axis::poll(bool* moving)
 
   setDoubleParam(pC_->motorPosition_, (double)position);  //write to motor record
 
+  callParamCallbacks();
   return status;
 }
 
@@ -259,6 +265,7 @@ void ihm02a1Axis::report(FILE *fp, int level)
     fprintf(fp, "  axis %d\n",
             axisNo_);
   }
+}
 
 asynStatus ihm02a1Axis::move(double position, int relative, double min_velocity, double max_velocity, double acceleration)
 {
@@ -278,14 +285,16 @@ asynStatus ihm02a1Axis::move(double position, int relative, double min_velocity,
   } else {
     memset(buffer, MOVE, 1);
   }
-  memcpy(buffer+1, arg, 3);
+  memcpy(buffer+1, &arg, 3);
 
-  status = pC_->writeReadFrame(&pC_->inString_, buffer, 4, 1 << axisNo_);
+  memcpy(pC_->outString_, buffer, 4);
+  status = pC_->writeReadFrame(pC_->inString_, pC_->outString_, 4, 1 << axisNo_);
+
   return status;
 }
 
 
-asynStatus moveVelocity(double min_velocity, double max_velocity, double acceleration)
+asynStatus ihm02a1Axis::moveVelocity(double min_velocity, double max_velocity, double acceleration)
 {
   asynStatus status;
   uint8_t buffer[4] = {0};
@@ -295,30 +304,61 @@ asynStatus moveVelocity(double min_velocity, double max_velocity, double acceler
 
   uint8_t cmd = (max_velocity > 0) ? JOG+1 : JOG;
   memcpy(buffer, &cmd, 1);
-  memcpy(buffer+1, arg, 3);
+  memcpy(buffer+1, &arg, 3);
 
-  status = pC_->writeReadFrame(&pC_->inString_, buffer, 4, 1 << axisNo_);
+  memcpy(pC_->outString_, buffer, 4);
+  status = pC_->writeReadFrame(pC_->inString_, pC_->outString_, 4, 1 << axisNo_);
+
   return status;
 }
 
-asynStatus stop(double acceleration)
+asynStatus ihm02a1Axis::stop(double acceleration)
 {
   asynStatus status;
 
   //todo custom accel
 
   uint8_t cmd = SOFT_STOP;
-  status = pC_->writeReadFrame(&pC_->inString_, &cmd, 1, 1 << axisNo_);
+  memcpy(pC_->outString_, &cmd, 1);
+  status = pC_->writeReadFrame(pC_->inString_, pC_->outString_, 1, 1 << axisNo_);
   return status;
 }
 
-asynStatus home(double min_velocity, double max_velocity, double acceleration, int forwards)
+asynStatus ihm02a1Axis::home(double min_velocity, double max_velocity, double acceleration, int forwards)
 {
   asynStatus status;
 
   //todo custom speeds
 
   uint8_t cmd = GO_HOME;
-  status = pC_->writeReadFrame(&pC_->inString_, &cmd, 1, 1 << axisNo_);
+  memcpy(pC_->outString_, &cmd, 1);
+  status = pC_->writeReadFrame(pC_->inString_, pC_->outString_, 1, 1 << axisNo_);
   return status;
+}
+
+
+/** Code for iocsh registration */
+static const iocshArg ihm02a1CreateControllerArg0 = {"Port name", iocshArgString};
+static const iocshArg ihm02a1CreateControllerArg1 = {"IHM02A1 port name", iocshArgString};
+static const iocshArg ihm02a1CreateControllerArg2 = {"Number of axes", iocshArgInt};
+static const iocshArg ihm02a1CreateControllerArg3 = {"Moving poll period (ms)", iocshArgInt};
+static const iocshArg ihm02a1CreateControllerArg4 = {"Idle poll period (ms)", iocshArgInt};
+static const iocshArg * const ihm02a1CreateControllerArgs[] = {&ihm02a1CreateControllerArg0,
+                                                             &ihm02a1CreateControllerArg1,
+                                                             &ihm02a1CreateControllerArg2,
+                                                             &ihm02a1CreateControllerArg3,
+                                                             &ihm02a1CreateControllerArg4};
+static const iocshFuncDef ihm02a1CreateControllerDef = {"ihm02a1CreateController", 5, ihm02a1CreateControllerArgs};
+static void ihm02a1CreateContollerCallFunc(const iocshArgBuf *args)
+{
+  ihm02a1CreateController(args[0].sval, args[1].sval, args[2].ival, args[3].ival, args[4].ival);
+}
+
+static void ihm02a1Register(void)
+{
+  iocshRegister(&ihm02a1CreateControllerDef, ihm02a1CreateContollerCallFunc);
+}
+
+extern "C" {
+epicsExportRegistrar(ihm02a1Register);
 }

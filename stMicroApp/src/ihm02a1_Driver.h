@@ -78,6 +78,6 @@ public:
   asynStatus poll();
 
 private:
-  asynStatus ihm02a1Controller::writeReadFrame(uint8_t* input, uint8_t* output, uint8_t len, uint8_t mask);
+  asynStatus writeReadFrame(char* input, char* output, uint8_t len, uint8_t mask);
   friend class ihm02a1Axis;
 };
