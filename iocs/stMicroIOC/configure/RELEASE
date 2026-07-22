@@ -1,0 +1,11 @@
+# RELEASE - Location of external support modules
+
+STMICROMOTOR = $(TOP)/../..
+DRVASYNSPI = $(STMICROMOTOR)/drvAsynSPI
+
+# Include environment files from Motor, motorSTMicro and the IOC itself
+
+-include $(TOP)/../../../RELEASE.$(EPICS_HOST_ARCH).local
+-include $(TOP)/../../configure/RELEASE
+-include $(TOP)/../../configure/RELEASE.local
+-include $(TOP)/configure/RELEASE.local
