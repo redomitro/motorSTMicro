@@ -1,0 +1,13 @@
+#manually define paths to dependencies
+
+ASYN =
+MOTOR =
+
+#define path to EPICS base
+
+EPICS_BASE =
+
+#use the motor/modules release files if building inside motor
+
+-include $(TOP)/../RELEASE.local
+-include $(TOP)/../RELEASE.$(EPICS_HOST_ARCH).local
