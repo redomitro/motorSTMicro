@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
-#include <stdfloat>
+//#include <stdfloat>
 
 #include <iocsh.h>
 #include <epicsThread.h>
