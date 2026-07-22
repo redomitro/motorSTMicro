@@ -1,0 +1,14 @@
+record(motor,"$(SYS):$(SUB)")
+{
+    field(DESC,"Chopper control")
+    field(DTYP,"asynMotor")
+    field(DIR,"Pos")
+    field(ACCU,"$(ACCU=0)")
+    field(OUT,"@asyn(uProbChopper,0)")
+    field(MRES,"0.0000390625")
+    field(PREC,"3")
+    field(EGU,"rot")
+    field(DHLM,"60")
+    field(DLLM,"-60")
+    field(TWV,"0.1")
+}
