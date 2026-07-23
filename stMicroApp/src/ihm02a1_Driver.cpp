@@ -174,7 +174,7 @@ asynStatus ihm02a1Controller::writeReadFrame(char* input, char* output, uint8_t 
 
   for(int i = 0; i < len; i++){
     status = pasynOctetSyncIO->writeRead(pasynUserController_, (char*)tx+i*numAxes_,
-                                         numAxes_, (char*)rx+i*numAxes_, sizeof(rx),
+                                         numAxes_, (char*)rx+i*numAxes_, numAxes_,
                                          DEFAULT_CONTROLLER_TIMEOUT, &nwrite, &nread, &eomReason);
 
   // Repeated calls to pasynOctetSyncIO which will hopefully propagate through SPI as desired.
