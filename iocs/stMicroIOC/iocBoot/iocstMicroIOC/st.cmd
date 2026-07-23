@@ -15,7 +15,7 @@ cd "${TOP}"
 dbLoadDatabase "dbd/stMicroIOC.dbd"
 stMicroIOC_registerRecordDeviceDriver pdbbase
 
-drvAsynSPIConfigure("L0", "/dev/spidev0.0", 0, 0, 1)
+drvAsynSPIConfigure("L0", "/dev/spidev0.0", 0, 115200, 1)
 ihm02a1CreateController("uProbChopper", "L0", 2, 10, 1000, 0)
 
 ## Load record instances
